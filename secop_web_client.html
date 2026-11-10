@@ -1,0 +1,1107 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>SECoP Node Explorer</title>
+<style>
+  :root{
+    --bg:#f6f7f9; --panel:#ffffff; --panel2:#f0f2f5; --border:#d7dbe0;
+    --text:#1b1f24; --muted:#5b6470; --accent:#2f81f7; --accent-fg:#fff;
+    --ok:#1a7f37; --warn:#9a6700; --err:#cf222e; --busy:#0969da;
+    --mono:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;
+    --sans:system-ui,-apple-system,Segoe UI,Roboto,Helvetica,Arial,sans-serif;
+  }
+  @media (prefers-color-scheme: dark){
+    :root{
+      --bg:#0d1117; --panel:#161b22; --panel2:#1c2330; --border:#30363d;
+      --text:#e6edf3; --muted:#9198a1; --accent:#2f81f7;
+      --ok:#3fb950; --warn:#d29922; --err:#f85149; --busy:#58a6ff;
+    }
+  }
+  *{box-sizing:border-box}
+  [hidden]{display:none!important}
+  html,body{margin:0;height:100%}
+  body{font-family:var(--sans);background:var(--bg);color:var(--text);font-size:14px;display:flex;flex-direction:column;height:100vh}
+  h1,h2,h3{margin:0}
+  a{color:var(--accent)}
+  button{font:inherit;cursor:pointer;border:1px solid var(--border);background:var(--panel2);color:var(--text);border-radius:6px;padding:5px 10px}
+  button:hover{border-color:var(--accent)}
+  button.primary{background:var(--accent);color:var(--accent-fg);border-color:var(--accent)}
+  button.small{padding:2px 7px;font-size:12px}
+  input,select,textarea{font:inherit;background:var(--panel);color:var(--text);border:1px solid var(--border);border-radius:6px;padding:5px 7px}
+  input:focus,select:focus,textarea:focus{outline:2px solid var(--accent);outline-offset:-1px}
+  .mono{font-family:var(--mono)}
+  .muted{color:var(--muted)}
+  .row{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+
+  /* header / connection bar */
+  header{background:var(--panel);border-bottom:1px solid var(--border);padding:10px 14px;display:flex;flex-direction:column;gap:8px}
+  .title{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
+  .title h1{font-size:16px;font-weight:650}
+  .dot{width:11px;height:11px;border-radius:50%;background:#888;flex:none;box-shadow:0 0 0 3px rgba(128,128,128,.18)}
+  .meta{color:var(--muted);font-size:12px}
+  fieldset.mode{border:0;padding:0;margin:0;display:flex;gap:14px;align-items:center;flex-wrap:wrap}
+  fieldset.mode label{display:flex;gap:5px;align-items:center}
+  .fieldgrp{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+  .fieldgrp label{display:flex;flex-direction:column;font-size:11px;color:var(--muted);gap:2px}
+  .fieldgrp input{min-width:90px}
+  #wsurl{min-width:280px}
+
+  /* layout */
+  main{flex:1;display:flex;min-height:0}
+  aside{width:280px;flex:none;background:var(--panel);border-right:1px solid var(--border);display:flex;flex-direction:column;min-height:0}
+  #nodebar{padding:10px 12px;border-bottom:1px solid var(--border)}
+  #nodebar .eqid{font-weight:600}
+  #modlist{list-style:none;margin:0;padding:6px;overflow:auto;flex:1}
+  #modlist li{padding:8px 9px;border-radius:7px;cursor:pointer;display:flex;gap:8px;align-items:center}
+  #modlist li:hover{background:var(--panel2)}
+  #modlist li.sel{background:var(--accent);color:var(--accent-fg)}
+  #modlist li.sel .mname{color:var(--accent-fg)}
+  #modlist li.sel .mval{color:var(--accent-fg);opacity:.85}
+  .mname{font-weight:600}
+  .mval{font-size:11px;color:var(--muted);margin-left:auto;max-width:110px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .grouphdr{font-size:10px;letter-spacing:.08em;text-transform:uppercase;color:var(--muted);padding:10px 10px 3px}
+
+  section#content{flex:1;display:flex;flex-direction:column;min-width:0}
+  nav#tabs{display:flex;gap:2px;padding:8px 12px 0;border-bottom:1px solid var(--border);background:var(--panel)}
+  nav#tabs button{border:1px solid transparent;border-bottom:0;border-radius:7px 7px 0 0;background:transparent}
+  nav#tabs button.active{background:var(--bg);border-color:var(--border)}
+  .tabpane{flex:1;overflow:auto;padding:16px;display:none}
+  .tabpane.active{display:block}
+
+  /* module detail */
+  .modhead{display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-bottom:4px}
+  .modhead h2{font-size:18px}
+  .pill{font-size:11px;font-weight:600;padding:2px 8px;border-radius:20px;color:#fff;display:inline-flex;gap:5px;align-items:center}
+  .iface{font-size:11px;border:1px solid var(--border);border-radius:20px;padding:2px 8px;color:var(--muted)}
+  details.props{margin:10px 0;border:1px solid var(--border);border-radius:8px;background:var(--panel)}
+  details.props>summary{padding:8px 12px;cursor:pointer;font-weight:600}
+  details.props table{border-collapse:collapse;width:100%;font-size:13px}
+  details.props td{border-top:1px solid var(--border);padding:6px 12px;vertical-align:top}
+  details.props td:first-child{color:var(--muted);width:180px;font-family:var(--mono)}
+
+  .filterbar{display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin:0 0 12px;padding:8px 10px;border:1px solid var(--border);border-radius:8px;background:var(--panel2);font-size:12px}
+  .filterbar label{display:flex;gap:6px;align-items:center;color:var(--text);cursor:pointer}
+  .chip{padding:3px 10px;border-radius:20px;border:1px solid var(--border);cursor:pointer;background:var(--panel);color:var(--text);user-select:none}
+  .chip:hover{border-color:var(--accent)}
+  .chip.off{color:var(--muted);border-style:dashed;background:transparent;opacity:.75}
+
+  /* command bar: horizontal, sits above the parameter cards, visually
+     distinct so commands read as actions rather than values */
+  .cmdbar{margin:0 0 14px;padding:10px 12px;border:1px solid var(--border);border-radius:9px;background:var(--panel2)}
+  .cmdbar-label{font-size:10px;letter-spacing:.08em;text-transform:uppercase;color:var(--muted);margin-bottom:8px}
+  .cmdbar-row{display:flex;gap:14px;flex-wrap:wrap;align-items:center}
+  .cmdchip{display:flex;gap:6px;align-items:center}
+  .cmdchip .cmdname{font-size:12px;color:var(--muted)}
+  .cmdchip .cmdarg{min-width:110px}
+  .cmdchip .msg{max-width:220px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+
+  .acc{border:1px solid var(--border);border-radius:9px;background:var(--panel);margin:10px 0;padding:12px 14px}
+  .acc-head{display:flex;gap:8px;align-items:baseline;flex-wrap:wrap}
+  .acc-name{font-weight:700;font-size:15px;font-family:var(--mono)}
+  .tag{font-size:10px;padding:1px 6px;border-radius:5px;border:1px solid var(--border);color:var(--muted)}
+  .tag.rw{color:var(--ok);border-color:var(--ok)}
+  .tag.ro{color:var(--muted)}
+  .acc-desc{color:var(--muted);margin:4px 0 8px}
+  .acc-type{font-family:var(--mono);font-size:12px;color:var(--muted);background:var(--panel2);padding:3px 7px;border-radius:5px;display:inline-block;margin-bottom:8px;white-space:pre-wrap}
+  .valline{display:flex;gap:8px;align-items:baseline;flex-wrap:wrap;margin-bottom:8px}
+  .curval{font-size:20px;font-weight:650;font-family:var(--mono)}
+  .unit{color:var(--muted)}
+  .ts{font-size:11px;color:var(--muted)}
+
+  /* arrayOf(structOf) / structOf value tables */
+  .valtable-outer{margin:2px 0 10px}
+  .valtable-outer summary{cursor:pointer;font-size:12px;color:var(--muted);padding:2px 0}
+  .valtable-outer summary:hover{color:var(--text)}
+  .valtable-scroll{max-height:340px;overflow:auto;border:1px solid var(--border);border-radius:8px;margin-top:6px}
+  table.valtable{border-collapse:collapse;width:100%;font-size:12px;font-family:var(--mono)}
+  table.valtable th,table.valtable td{padding:4px 10px;border-bottom:1px solid var(--border);text-align:left;white-space:nowrap}
+  table.valtable thead th{position:sticky;top:0;background:var(--panel2);color:var(--muted);font-weight:600}
+  table.valtable tbody tr:nth-child(even){background:var(--panel2)}
+  table.valtable td.idx,table.valtable th.idx{color:var(--muted);text-align:right}
+  table.valtable.kv{width:auto}
+  table.valtable.kv th{color:var(--muted);font-weight:600;padding-right:16px;border-bottom-color:transparent}
+  table.valtable.kv td{border-bottom-color:transparent}
+
+  .setline{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+  .setline .ctl{min-width:150px}
+  textarea.ctl{min-width:280px}
+  .msg{font-size:12px}
+  .msg.ok{color:var(--ok)} .msg.err{color:var(--err)}
+  .flash{animation:flash .9s ease-out}
+  @keyframes flash{from{background:rgba(47,129,247,.28)}to{background:transparent}}
+
+  /* plots */
+  .plotcard{border:1px solid var(--border);border-radius:9px;background:var(--panel);margin:0 0 14px;padding:12px}
+  .plotcard h3{font-size:14px;font-family:var(--mono)}
+  .plotcard canvas{width:100%;height:230px;display:block;margin-top:8px;background:var(--panel2);border-radius:6px}
+  .plotstats{font-size:12px;color:var(--muted);margin-top:6px}
+  .plotstats b{color:var(--text);font-family:var(--mono)}
+
+  /* console */
+  #tab-console{display:none;flex-direction:column;padding:0}
+  #tab-console.active{display:flex}
+  .conbar{padding:8px 12px;border-bottom:1px solid var(--border);display:flex;gap:12px;align-items:center;flex-wrap:wrap}
+  #log{flex:1;overflow:auto;padding:10px 12px;font-family:var(--mono);font-size:12px;line-height:1.5;white-space:pre-wrap;word-break:break-word}
+  #log .tx{color:var(--accent)}
+  #log .rx{color:var(--text)}
+  #log .er{color:var(--err)}
+  #log .in{color:var(--muted)}
+  .coninput{display:flex;gap:8px;padding:8px 12px;border-top:1px solid var(--border)}
+  .coninput input{flex:1}
+
+  .empty{color:var(--muted);padding:30px;text-align:center}
+  .legend{display:flex;gap:14px;flex-wrap:wrap;font-size:11px;color:var(--muted);margin-top:4px}
+  .legend span{display:flex;gap:5px;align-items:center}
+  .lg{width:9px;height:9px;border-radius:50%}
+  @media (max-width:820px){
+    main{flex-direction:column}
+    aside{width:auto;max-height:38vh;border-right:0;border-bottom:1px solid var(--border)}
+  }
+</style>
+</head>
+<body>
+<header>
+  <div class="title">
+    <span class="dot" id="statusdot"></span>
+    <h1>SECoP Node Explorer</h1>
+    <span class="meta" id="statustext">disconnected</span>
+    <span class="meta" id="nodemeta"></span>
+  </div>
+  <div class="row">
+    <fieldset class="mode">
+      <label><input type="radio" name="mode" value="bridge" checked> Via bridge</label>
+      <label><input type="radio" name="mode" value="direct"> Direct WebSocket URL</label>
+    </fieldset>
+    <div class="fieldgrp" id="grp-bridge">
+      <label>Bridge URL<input id="bridgeurl" value="ws://localhost:1337"></label>
+      <label>SECoP host<input id="host" value="localhost"></label>
+      <label>SECoP port<input id="port" value="10767" inputmode="numeric"></label>
+    </div>
+    <div class="fieldgrp" id="grp-direct" hidden>
+      <label>WebSocket URL<input id="wsurl" placeholder="ws://host:port/ (SECoP ws interface)"></label>
+    </div>
+    <button class="primary" id="connectbtn">Connect</button>
+    <button id="activatebtn" hidden>Deactivate updates</button>
+    <label class="row" style="font-size:12px"><input type="checkbox" id="autoact" checked> auto&#8209;activate</label>
+  </div>
+  <div class="legend">
+    <span><span class="lg" style="background:#3fb950"></span>idle</span>
+    <span><span class="lg" style="background:#d29922"></span>warn</span>
+    <span><span class="lg" style="background:#2f81f7"></span>busy</span>
+    <span><span class="lg" style="background:#f85149"></span>error</span>
+    <span><span class="lg" style="background:#888"></span>disabled / unknown</span>
+  </div>
+</header>
+
+<main>
+  <aside>
+    <div id="nodebar"><span class="muted">Not connected.</span></div>
+    <ul id="modlist"></ul>
+  </aside>
+  <section id="content">
+    <nav id="tabs">
+      <button data-tab="module" class="active">Module</button>
+      <button data-tab="plots">Plots</button>
+      <button data-tab="console">Console</button>
+      <button data-tab="node">Node info</button>
+    </nav>
+    <div id="tab-module" class="tabpane active"><div class="empty">Connect to a SECoP node to begin.</div></div>
+    <div id="tab-plots" class="tabpane"><div class="empty">No parameters plotted. Use the &#128200; Plot button on a numeric parameter.</div></div>
+    <div id="tab-console" class="tabpane">
+      <div class="conbar">
+        <label class="row"><input type="checkbox" id="showupd" checked> show <code>update</code> messages</label>
+        <button class="small" id="clearlog">Clear</button>
+        <span class="muted">Type raw SECoP messages below (e.g. <code>read tcs:value</code>).</span>
+      </div>
+      <div id="log"></div>
+      <div class="coninput">
+        <input id="conline" placeholder="raw SECoP command… (Enter to send)" autocomplete="off">
+        <button id="consend">Send</button>
+      </div>
+    </div>
+    <div id="tab-node" class="tabpane"><div class="empty">Not connected.</div></div>
+  </section>
+</main>
+
+<script>
+"use strict";
+const $ = s => document.querySelector(s);
+const MAXPTS = 20000;
+
+function el(tag, attrs, ...kids){
+  const e = document.createElement(tag);
+  if(attrs) for(const k in attrs){
+    const v = attrs[k];
+    if(v===undefined||v===null) continue;
+    if(k==='class') e.className = v;
+    else if(k==='text') e.textContent = v;
+    else if(k.startsWith('on') && typeof v==='function') e.addEventListener(k.slice(2), v);
+    else e.setAttribute(k, v);
+  }
+  for(const kid of kids){ if(kid==null||kid===false) continue; e.append(kid.nodeType ? kid : document.createTextNode(String(kid))); }
+  return e;
+}
+
+const state = {
+  ws:null, idn:null, report:null, node:{}, modules:{}, selected:null, active:false,
+  plots:{},            // "mod:param" -> {data:[{t,v}], paused, windowSec, di, unit}
+  cellRefs:{}, sideRefs:{}, pendingMsg:{}, pendingCmd:{},
+  log:[], tab:'module',
+  showAdvanced:false,  // show underscore-prefixed / visibility=advanced|expert parameters
+  hiddenGroups:new Set(),  // group names (the "group" accessible property) currently hidden
+};
+
+/* ---------- preferences ---------- */
+function loadPrefs(){
+  try{
+    const p = JSON.parse(localStorage.getItem('secop_explorer')||'{}');
+    if(p.mode){ document.querySelector(`input[name=mode][value=${p.mode}]`).checked = true; }
+    if(p.bridgeurl) $('#bridgeurl').value = p.bridgeurl;
+    if(p.host) $('#host').value = p.host;
+    if(p.port) $('#port').value = p.port;
+    if(p.wsurl) $('#wsurl').value = p.wsurl;
+    if(p.showupd===false) $('#showupd').checked = false;
+    if(p.showAdvanced) state.showAdvanced = true;
+    if(Array.isArray(p.hiddenGroups)) state.hiddenGroups = new Set(p.hiddenGroups);
+  }catch(e){}
+  // URL query overrides
+  const q = new URLSearchParams(location.search);
+  if(q.get('host')) $('#host').value = q.get('host');
+  if(q.get('port')) $('#port').value = q.get('port');
+  if(q.get('bridge')) $('#bridgeurl').value = q.get('bridge');
+  if(q.get('ws')){ $('#wsurl').value = q.get('ws'); document.querySelector('input[name=mode][value=direct]').checked = true; }
+  syncMode();
+}
+function savePrefs(){
+  try{
+    localStorage.setItem('secop_explorer', JSON.stringify({
+      mode:currentMode(), bridgeurl:$('#bridgeurl').value, host:$('#host').value,
+      port:$('#port').value, wsurl:$('#wsurl').value, showupd:$('#showupd').checked,
+      showAdvanced:state.showAdvanced, hiddenGroups:Array.from(state.hiddenGroups),
+    }));
+  }catch(e){}
+}
+const currentMode = () => document.querySelector('input[name=mode]:checked').value;
+function syncMode(){
+  const m = currentMode();
+  $('#grp-bridge').hidden = m!=='bridge';
+  $('#grp-direct').hidden = m!=='direct';
+}
+document.querySelectorAll('input[name=mode]').forEach(r => r.addEventListener('change', ()=>{syncMode();savePrefs();}));
+
+/* ---------- connection ---------- */
+function setStatus(s){
+  const colors = {disconnected:'#888', connecting:'#d29922', connected:'#3fb950', error:'#f85149'};
+  $('#statusdot').style.background = colors[s]||'#888';
+  $('#statustext').textContent = s;
+}
+function updateConnMeta(){
+  const bits = [];
+  if(state.node.equipment_id) bits.push(state.node.equipment_id);
+  if(state.idn) bits.push(state.idn);
+  if(state.ws && state.ws.readyState===1) bits.push(state.active ? 'updates: on' : 'updates: off');
+  $('#nodemeta').textContent = bits.join('  ·  ');
+  $('#activatebtn').hidden = !(state.ws && state.ws.readyState===1);
+  $('#activatebtn').textContent = state.active ? 'Deactivate updates' : 'Activate updates';
+}
+function wsURL(){
+  if(currentMode()==='bridge'){
+    const b = $('#bridgeurl').value.trim().replace(/\/+$/,'');
+    return `${b}/?host=${encodeURIComponent($('#host').value.trim())}&port=${encodeURIComponent($('#port').value.trim())}`;
+  }
+  return $('#wsurl').value.trim();
+}
+function connect(){
+  disconnect();
+  const url = wsURL();
+  if(!url){ logLine('in','Enter a WebSocket URL first.','er'); return; }
+  savePrefs();
+  setStatus('connecting');
+  logLine('in','connecting → '+url);
+  let ws;
+  try{ ws = new WebSocket(url); }
+  catch(e){ setStatus('error'); logLine('in','bad URL: '+e.message,'er'); return; }
+  state.ws = ws;
+  ws.onopen = () => { logLine('in','websocket open'); send('*IDN?'); send('describe'); };
+  ws.onmessage = ev => String(ev.data).split(/\r?\n/).forEach(l => { if(l.trim()) handleLine(l); });
+  ws.onerror = () => { logLine('in','websocket error — is the bridge / node reachable?','er'); setStatus('error'); };
+  ws.onclose = ev => { logLine('in','websocket closed'+(ev.reason?(' ('+ev.reason+')'):'')); setStatus('disconnected'); state.active=false; updateConnMeta(); $('#connectbtn').textContent='Connect'; };
+  $('#connectbtn').textContent = 'Disconnect';
+}
+function disconnect(){
+  if(state.ws){ try{ state.ws.onclose=null; state.ws.close(); }catch(e){} state.ws=null; }
+  state.active=false; updateConnMeta();
+  $('#connectbtn').textContent = 'Connect';
+}
+function send(line){
+  if(!state.ws || state.ws.readyState!==1){ logLine('in','not connected','er'); return; }
+  state.ws.send(line + '\n');
+  logLine('tx', line);
+}
+$('#connectbtn').addEventListener('click', ()=> (state.ws ? disconnect() : connect()));
+$('#activatebtn').addEventListener('click', ()=> send(state.active ? 'deactivate' : 'activate'));
+
+/* ---------- protocol parsing ---------- */
+function parseMsg(line){
+  line = line.trim();
+  const i1 = line.indexOf(' ');
+  let action, rest;
+  if(i1<0){ action = line; rest=''; } else { action = line.slice(0,i1); rest = line.slice(i1+1); }
+  const i2 = rest.indexOf(' ');
+  let specifier, dataStr;
+  if(i2<0){ specifier = rest; dataStr=''; } else { specifier = rest.slice(0,i2); dataStr = rest.slice(i2+1); }
+  let data;
+  if(dataStr!==''){ try{ data = JSON.parse(dataStr); }catch(e){ data = dataStr; } }
+  return {action, specifier, data};
+}
+function handleLine(line){
+  logLine('rx', line);
+  line = line.trim();
+  if(line.startsWith('ISSE')){ state.idn = line; updateConnMeta(); return; }
+  const {action, specifier, data} = parseMsg(line);
+  switch(true){
+    case action==='describing':
+      onDescribe(data); setStatus('connected');
+      if($('#autoact').checked) send('activate');
+      break;
+    case action==='active':   state.active=true;  updateConnMeta(); break;
+    case action==='inactive': state.active=false; updateConnMeta(); break;
+    case action==='update':
+    case action==='reply':
+    case action==='changed':
+      applyValue(specifier, data, action); break;
+    case action==='done':
+      onCommandResult(specifier, data); break;
+    case action==='pong': break;
+    case action.startsWith('error'):
+      onError(action, specifier, data); break;
+    default: /* ignore */ break;
+  }
+}
+function onDescribe(report){
+  if(!report || typeof report!=='object'){ logLine('in','could not parse describe','er'); return; }
+  state.report = report;
+  state.node = {};
+  for(const k in report){ if(k!=='modules') state.node[k] = report[k]; }
+  state.modules = {};
+  const mods = report.modules || {};
+  for(const mname in mods){
+    const m = mods[mname] || {};
+    const rawAcc = m.accessibles || {};
+    const props = {}; for(const k in m){ if(k!=='accessibles') props[k]=m[k]; }
+    const accessibles = {};
+    for(const aname in rawAcc){
+      const a = rawAcc[aname] || {};
+      const di = a.datainfo || a.datatype || {};
+      const aprops = {}; for(const k in a){ if(k!=='datainfo' && k!=='datatype') aprops[k]=a[k]; }
+      const isCommand = di && di.type==='command';
+      accessibles[aname] = {
+        name:aname, datainfo:di, props:aprops, isCommand,
+        readonly: isCommand ? true : (aprops.readonly===undefined ? true : !!aprops.readonly),
+        value:undefined, qual:{}, t:null, error:null, result:undefined,
+      };
+    }
+    state.modules[mname] = {name:mname, props, accessibles, statusCode:null, statusText:''};
+  }
+  if(!state.selected || !state.modules[state.selected]){
+    state.selected = Object.keys(state.modules)[0] || null;
+  }
+  renderSidebar();
+  renderModule();
+  renderNode();
+  logLine('in', `describe: ${Object.keys(state.modules).length} module(s)`);
+}
+function applyValue(spec, data, action){
+  const c = spec.indexOf(':');
+  if(c<0) return;
+  const mod = spec.slice(0,c), param = spec.slice(c+1);
+  const M = state.modules[mod]; if(!M) return;
+  const A = M.accessibles[param]; if(!A) return;
+  let value, qual;
+  if(Array.isArray(data)){ value = data[0]; qual = data[1] || {}; }
+  else { value = data; qual = {}; }
+  A.value = value; A.qual = qual; A.error = null;
+  A.t = (qual && typeof qual.t==='number') ? qual.t : Date.now()/1000;
+  if(param==='status' && Array.isArray(value)){ M.statusCode = Array.isArray(value[0])?value[0][0]:value[0]; M.statusText = value[1]||''; }
+  const key = mod+':'+param;
+  const P = state.plots[key];
+  if(P && !P.paused){
+    const n = toNumber(A.datainfo, value);
+    if(n!==null){ P.data.push({t:A.t, v:n}); if(P.data.length>MAXPTS) P.data.shift(); }
+  }
+  updateValueUI(mod, param, action);
+}
+function onCommandResult(spec, data){
+  const c = spec.indexOf(':'); if(c<0) return;
+  const mod = spec.slice(0,c), cmd = spec.slice(c+1);
+  const A = state.modules[mod] && state.modules[mod].accessibles[cmd];
+  const res = Array.isArray(data) ? data[0] : data;
+  if(A){ A.result = res; }
+  const pc = state.pendingCmd[mod+':'+cmd];
+  if(pc){ pc.textContent = '✓ done' + (res!==undefined && res!==null ? ' → '+JSON.stringify(res) : ''); pc.className='msg ok'; }
+}
+function onError(action, spec, data){
+  let cls='', msg='';
+  if(Array.isArray(data)){ cls=data[0]; msg=data[1]; }
+  logLine('rx', `${action} ${spec} ${JSON.stringify(data)}`, 'er');
+  const c = spec.indexOf(':');
+  if(c>=0){
+    const key = spec.slice(0,c)+':'+spec.slice(c+1);
+    const pm = state.pendingMsg[key];
+    if(pm){ pm.textContent = '⚠ '+cls+': '+msg; pm.className='msg err'; }
+    const pc = state.pendingCmd[key];
+    if(pc){ pc.textContent = '⚠ '+cls+': '+msg; pc.className='msg err'; }
+    const A = state.modules[spec.slice(0,c)] && state.modules[spec.slice(0,c)].accessibles[spec.slice(c+1)];
+    if(A) A.error = cls+': '+msg;
+  }
+}
+
+/* ---------- value helpers ---------- */
+function toNumber(di, v){
+  if(typeof v==='number') return (di && di.type==='scaled') ? v*(di.scale||1) : v;
+  if(typeof v==='boolean') return v?1:0;
+  return null;
+}
+function sprintf(fmt, x){
+  return String(fmt).replace(/%([#0-9.+\- ]*)([diouxXeEfgGs%])/g, (m, flags, conv)=>{
+    if(conv==='%') return '%';
+    const pm = flags.match(/\.(\d+)/);
+    let prec = pm ? Math.min(100, +pm[1]) : null;
+    const num = Number(x);
+    if(conv==='d'||conv==='i') return String(Math.round(num));
+    if(conv==='f') return num.toFixed(prec==null?6:prec);
+    if(conv==='e'||conv==='E'){ const s=num.toExponential(prec==null?6:prec); return conv==='E'?s.toUpperCase():s; }
+    if(conv==='g'||conv==='G'){ let s=num.toPrecision(prec==null?6:(prec||1)); if(s.indexOf('.')>=0 && !/e/i.test(s)) s=s.replace(/\.?0+$/,''); return conv==='G'?s.toUpperCase():s; }
+    if(conv==='s') return String(x);
+    return String(x);
+  });
+}
+function unitOf(di){ return di && di.unit ? di.unit : ''; }
+
+/* An accessible counts as "advanced" (hidden unless the user opts in) if it
+ * declares a SECoP `visibility` other than 'user', or — failing that — if
+ * Frappy exported it with a leading underscore, which is what Frappy does
+ * automatically for any parameter that isn't part of the module's standard
+ * SECoP interface (see frappy/params.py: export defaults to '_'+name). Most
+ * underscore-prefixed parameters are internal/tuning knobs, not things an
+ * operator changes day to day. */
+function isAdvanced(A){
+  const vis = A.props.visibility;
+  if(vis!==undefined && vis!==null){
+    return typeof vis==='number' ? vis>1 : String(vis)!=='user';
+  }
+  return A.name.startsWith('_');
+}
+function visibleAccessibles(M, allNames){
+  return allNames.filter(an=>{
+    const A = M.accessibles[an];
+    if(!state.showAdvanced && isAdvanced(A)) return false;
+    const g = A.props.group || '';
+    if(g && state.hiddenGroups.has(g)) return false;
+    return true;
+  });
+}
+function buildFilterBar(M, allNames){
+  let advCount = 0;
+  const groupCounts = {};
+  for(const an of allNames){
+    const A = M.accessibles[an];
+    if(isAdvanced(A)) advCount++;
+    const g = A.props.group || '';
+    if(g) groupCounts[g] = (groupCounts[g]||0) + 1;
+  }
+  const groupNames = Object.keys(groupCounts).sort();
+  if(!advCount && !groupNames.length) return null;
+
+  const bar = el('div',{class:'filterbar'});
+  if(advCount){
+    const cb = el('input',{type:'checkbox'});
+    cb.checked = state.showAdvanced;
+    cb.addEventListener('change', ()=>{ state.showAdvanced = cb.checked; savePrefs(); renderModule(); });
+    bar.append(el('label',null, cb, `show advanced / internal (${advCount})`));
+  }
+  for(const g of groupNames){
+    const hidden = state.hiddenGroups.has(g);
+    const chip = el('span',{class:'chip'+(hidden?' off':''),
+      title:`click to ${hidden?'show':'hide'} the "${g}" group`}, `${g} (${groupCounts[g]})`);
+    chip.addEventListener('click', ()=>{
+      if(hidden) state.hiddenGroups.delete(g); else state.hiddenGroups.add(g);
+      savePrefs(); renderModule();
+    });
+    bar.append(chip);
+  }
+  return bar;
+}
+function fmtValue(di, value, opt={}){
+  if(value===undefined) return '—';
+  if(value===null) return 'null';
+  const t = di && di.type;
+  if(t==='enum' && di.members){
+    for(const name in di.members){ if(di.members[name]===value) return `${name} (${value})`; }
+    return String(value);
+  }
+  if(t==='bool') return value ? 'true' : 'false';
+  if(t==='scaled') { const r = value*(di.scale||1); return (di.fmtstr?sprintf(di.fmtstr,r):String(r)); }
+  if(t==='double' || t==='int'){
+    if(di.fmtstr) return sprintf(di.fmtstr, value);
+    return String(value);
+  }
+  if(t==='string') return String(value);
+  if(Array.isArray(value) || (typeof value==='object')) {
+    const s = JSON.stringify(value);
+    return opt.short && s.length>60 ? s.slice(0,57)+'…' : s;
+  }
+  return String(value);
+}
+/* arrayOf(structOf(...)) and bare structOf(...) are common for lookup/config
+ * tables (e.g. a gas table) and are unreadable as inline JSON — render them
+ * as an actual table instead. Everything else still goes through fmtValue(). */
+function isTableType(di){
+  return !!di && (di.type==='struct' || (di.type==='array' && di.members && di.members.type==='struct'));
+}
+function tableSummary(di, value){
+  if(di.type==='struct') return 'struct';
+  const n = Array.isArray(value) ? value.length : 0;
+  return `${n} ${n===1?'entry':'entries'}`;
+}
+function structFields(structDi){ return Object.keys((structDi && structDi.members) || {}); }
+function fieldHeader(structDi, f){
+  const fdi = structDi.members[f];
+  return f + (fdi && fdi.unit ? ` [${fdi.unit}]` : '');
+}
+// a lone struct: one vertical field/value table
+function buildKeyValueTable(structDi, value){
+  const table = el('table',{class:'valtable kv'});
+  const tbody = el('tbody');
+  for(const f of structFields(structDi)){
+    tbody.append(el('tr', null,
+      el('th', null, fieldHeader(structDi, f)),
+      el('td', null, fmtValue(structDi.members[f], value ? value[f] : undefined, {}))));
+  }
+  table.append(tbody);
+  return table;
+}
+// an array of structs: one row per element, one column per struct field
+function buildStructArrayTable(structDi, rows){
+  const fields = structFields(structDi);
+  const table = el('table',{class:'valtable'});
+  const headRow = el('tr', null, el('th',{class:'idx'},'#'));
+  for(const f of fields) headRow.append(el('th', null, fieldHeader(structDi, f)));
+  table.append(el('thead', null, headRow));
+  const tbody = el('tbody');
+  rows.forEach((row, i)=>{
+    const tr = el('tr', null, el('td',{class:'idx'}, String(i)));
+    for(const f of fields) tr.append(el('td', null, fmtValue(structDi.members[f], row ? row[f] : undefined, {})));
+    tbody.append(tr);
+  });
+  table.append(tbody);
+  return table;
+}
+// builds (or empties+rebuilds) the table into `wrap`, for both initial render and live updates
+function renderValueTable(wrap, di, value){
+  wrap.innerHTML = '';
+  if(di.type==='struct'){
+    wrap.append(buildKeyValueTable(di, value));
+    return;
+  }
+  const rows = Array.isArray(value) ? value : [];
+  const det = el('details',{open: rows.length<=8 ? 'true' : null});
+  det.append(el('summary', null, tableSummary(di, value)));
+  det.append(el('div',{class:'valtable-scroll'}, buildStructArrayTable(di.members, rows)));
+  wrap.append(det);
+}
+function describeType(di){
+  if(!di || !di.type) return '(unknown type)';
+  const u = di.unit ? ' ['+di.unit+']' : '';
+  const rng = (di.min!==undefined||di.max!==undefined) ? `  ${di.min??'-∞'} … ${di.max??'∞'}` : '';
+  switch(di.type){
+    case 'double': return 'double'+u+rng;
+    case 'int': return 'int'+u+rng;
+    case 'scaled': return `scaled(step=${di.scale})`+u+rng;
+    case 'bool': return 'bool';
+    case 'string': return 'string'+(di.maxchars?`(max ${di.maxchars})`:'');
+    case 'blob': return `blob${di.maxbytes?`(max ${di.maxbytes} B)`:''}`;
+    case 'enum': return 'enum { '+Object.entries(di.members||{}).map(([k,v])=>`${k}=${v}`).join(', ')+' }';
+    case 'array': return `array[${di.minlen??0}..${di.maxlen??'∞'}] of ${describeType(di.members)}`;
+    case 'tuple': return `tuple(${(di.members||[]).map(describeType).join(', ')})`;
+    case 'struct': return 'struct { '+Object.entries(di.members||{}).map(([k,v])=>`${k}: ${describeType(v)}`).join(', ')+' }';
+    case 'command': return `command(${di.argument?describeType(di.argument):''}) → ${di.result?describeType(di.result):'void'}`;
+    default: return JSON.stringify(di);
+  }
+}
+function relTime(t){
+  if(!t) return '';
+  const d = Date.now()/1000 - t;
+  if(d<1) return 'just now';
+  if(d<60) return Math.floor(d)+'s ago';
+  if(d<3600) return Math.floor(d/60)+'m ago';
+  return Math.floor(d/3600)+'h ago';
+}
+function absTime(t){ return t ? new Date(t*1000).toISOString() : ''; }
+
+/* ---------- input widgets ---------- */
+function buildInput(di, current){
+  const t = di && di.type;
+  if(t==='bool'){
+    const s = el('select',{class:'ctl'}, el('option',{value:'true'},'true'), el('option',{value:'false'},'false'));
+    if(current!==undefined) s.value = current ? 'true' : 'false';
+    return {node:s, get:()=> s.value};
+  }
+  if(t==='enum'){
+    const s = el('select',{class:'ctl'});
+    for(const name in (di.members||{})) s.append(el('option',{value:String(di.members[name])}, `${name} (${di.members[name]})`));
+    if(current!==undefined) s.value = String(current);
+    return {node:s, get:()=> String(parseInt(s.value,10))};
+  }
+  if(t==='double' || t==='int' || t==='scaled'){
+    const inp = el('input',{type:'number', class:'ctl', step: t==='int'?'1':'any'});
+    if(di.min!==undefined) inp.min = di.min;
+    if(di.max!==undefined) inp.max = di.max;
+    if(current!==undefined && current!==null) inp.placeholder = fmtValue(di,current,{});
+    return {node:inp, get:()=>{
+      if(inp.value.trim()==='') throw new Error('enter a value');
+      let v = Number(inp.value);
+      if(!isFinite(v)) throw new Error('not a number');
+      if(t==='scaled') v = Math.round(v/(di.scale||1));
+      else if(t==='int') v = Math.round(v);
+      return JSON.stringify(v);
+    }};
+  }
+  if(t==='string'){
+    const inp = el('input',{type:'text', class:'ctl'});
+    if(current!==undefined) inp.placeholder = String(current);
+    return {node:inp, get:()=> JSON.stringify(inp.value)};
+  }
+  const ta = el('textarea',{class:'ctl mono', rows:'2', placeholder:'JSON value'});
+  if(current!==undefined){
+    ta.value = JSON.stringify(current, null, 1);
+    ta.rows = Math.max(2, Math.min(12, ta.value.split('\n').length));
+  }
+  return {node:ta, get:()=>{ return JSON.stringify(JSON.parse(ta.value)); }};
+}
+
+/* ---------- sidebar ---------- */
+function statusInfo(code){
+  if(code===null || code===undefined) return {c:'#888', t:'n/a'};
+  const b = Math.floor(code/100);
+  return ({0:{c:'#888',t:'DISABLED'},1:{c:'#3fb950',t:'IDLE'},2:{c:'#d29922',t:'WARN'},3:{c:'#2f81f7',t:'BUSY'},4:{c:'#f85149',t:'ERROR'},5:{c:'#a371f7',t:'UNKNOWN'}})[b] || {c:'#a371f7',t:'?'};
+}
+/* the SECoP "status" parameter is a [code, extra-text] tuple; these turn it
+ * into the same human-readable "IDLE — idle"-style text used in the header
+ * pill and sidebar dots, instead of showing the raw [100,"idle"] JSON. */
+function statusCodeOf(value){
+  if(!Array.isArray(value)) return null;
+  return Array.isArray(value[0]) ? value[0][0] : value[0];
+}
+function fmtStatusText(value){
+  if(!Array.isArray(value)) return '—';
+  const si = statusInfo(statusCodeOf(value));
+  const extra = value[1];
+  return si.t + (extra ? ' — '+extra : '');
+}
+function renderSidebar(){
+  const nb = $('#nodebar'); nb.innerHTML='';
+  nb.append(el('div',{class:'eqid'}, state.node.equipment_id || 'SECoP node'));
+  if(state.node.description) nb.append(el('div',{class:'muted', style:'font-size:12px;margin-top:2px'}, state.node.description));
+
+  const ul = $('#modlist'); ul.innerHTML=''; state.sideRefs={};
+  // group by "group" property
+  const groups = {};
+  for(const mname in state.modules){
+    const g = state.modules[mname].props.group || '';
+    (groups[g] = groups[g] || []).push(mname);
+  }
+  const order = Object.keys(groups).sort((a,b)=> a===''?1 : b===''?-1 : a.localeCompare(b));
+  for(const g of order){
+    if(g) ul.append(el('div',{class:'grouphdr'}, g));
+    for(const mname of groups[g]){
+      const M = state.modules[mname];
+      const dot = el('span',{class:'dot'});
+      const si = statusInfo(M.statusCode); dot.style.background = si.c; dot.style.boxShadow='none';
+      const val = el('span',{class:'mval'}, M.accessibles.value ? fmtValue(M.accessibles.value.datainfo, M.accessibles.value.value, {short:true}) : '');
+      const li = el('li', {class: mname===state.selected?'sel':'', onclick:()=>{ state.selected=mname; renderSidebar(); renderModule(); switchTab('module'); }},
+        dot, el('span',{class:'mname'}, mname), val);
+      state.sideRefs[mname] = {dot, val};
+      ul.append(li);
+    }
+  }
+}
+
+/* ---------- module detail ---------- */
+function renderModule(){
+  const pane = $('#tab-module');
+  pane.innerHTML='';
+  state.cellRefs={}; state.pendingMsg={}; state.pendingCmd={};
+  const mname = state.selected;
+  state.headPill = null;
+  if(!mname || !state.modules[mname]){ pane.append(el('div',{class:'empty'},'No module selected.')); return; }
+  const M = state.modules[mname];
+
+  const head = el('div',{class:'modhead'});
+  head.append(el('h2', null, mname));
+  const si = statusInfo(M.statusCode);
+  // kept so status polls can refresh it in place instead of rebuilding the pane
+  state.headPill = el('span',{class:'pill', style:`background:${si.c}`}, si.t + (M.statusText?(' — '+M.statusText):''));
+  head.append(state.headPill);
+  for(const ic of (M.props.interface_classes || M.props.interface_class || [])) head.append(el('span',{class:'iface'}, ic));
+  head.append(el('button',{class:'small', style:'margin-left:auto', onclick:()=>{ for(const an in M.accessibles){ if(!M.accessibles[an].isCommand) send(`read ${mname}:${an}`); } }}, '↻ Read all'));
+  pane.append(head);
+  if(M.props.description) pane.append(el('div',{class:'muted', style:'margin-bottom:6px'}, M.props.description));
+
+  // filtering (advanced/internal params, and per-group show/hide) — applies to
+  // both commands and parameters, computed once up front
+  const allNames = Object.keys(M.accessibles);
+  const allParamNames = allNames.filter(a=>!M.accessibles[a].isCommand);
+  const anames = visibleAccessibles(M, allNames);
+  const params = anames.filter(a=>!M.accessibles[a].isCommand);
+  const cmds = anames.filter(a=>M.accessibles[a].isCommand);
+
+  // commands go in a horizontal bar right at the top, separate from the
+  // parameter list below — they're actions, not values to read
+  if(cmds.length) pane.append(renderCommandBar(mname, M, cmds));
+
+  // module properties
+  const propKeys = Object.keys(M.props).filter(k=>k!=='description');
+  if(propKeys.length){
+    const d = el('details',{class:'props'}); d.append(el('summary',null,'Module properties'));
+    const tbl = el('table');
+    for(const k of propKeys){
+      const v = M.props[k];
+      tbl.append(el('tr',null, el('td',null,k), el('td',null, typeof v==='string'?v:JSON.stringify(v))));
+    }
+    d.append(tbl); pane.append(d);
+  }
+
+  // filter bar, then the parameter cards
+  const bar = buildFilterBar(M, allNames);
+  if(bar) pane.append(bar);
+
+  if(allParamNames.length && !params.length){
+    pane.append(el('div',{class:'empty'}, 'Every parameter is hidden by the filters above.'));
+  }
+  for(const an of params) pane.append(renderAccessible(mname, M.accessibles[an]));
+}
+
+/* ---------- commands (rendered in a horizontal bar, not as parameter cards) ---------- */
+function renderCommandBar(mname, M, cmdNames){
+  const bar = el('div',{class:'cmdbar'});
+  bar.append(el('div',{class:'cmdbar-label'}, 'Commands'));
+  const row = el('div',{class:'cmdbar-row'});
+  for(const cn of cmdNames) row.append(renderCommandChip(mname, M.accessibles[cn]));
+  bar.append(row);
+  return bar;
+}
+function renderCommandChip(mname, A){
+  const key = mname+':'+A.name;
+  const di = A.datainfo;
+  const tip = [A.props.description, describeType(di)].filter(Boolean).join(' — ');
+  const chip = el('div',{class:'cmdchip'});
+  const initial = A.result!==undefined ? ('✓ '+JSON.stringify(A.result)) : '';
+  const msg = el('span',{class:'msg'+(A.result!==undefined?' ok':'')}, initial);
+  let getArg = null, runBtn;
+  if(di.argument){
+    // takes an argument: show the command name as a label next to its input
+    chip.append(el('span',{class:'cmdname mono', title:tip}, A.name));
+    const w = buildInput(di.argument, undefined);
+    w.node.classList.add('cmdarg');
+    chip.append(w.node);
+    getArg = w.get;
+    runBtn = el('button',{class:'small primary'}, 'Run');
+  } else {
+    // no argument: the button itself is labelled with the command name
+    runBtn = el('button',{class:'small primary mono', title:tip}, A.name);
+  }
+  runBtn.addEventListener('click', ()=>{
+    let cmd = `do ${mname}:${A.name}`;
+    if(getArg){ try{ cmd += ' '+getArg(); }catch(e){ msg.textContent='⚠ '+e.message; msg.className='msg err'; return; } }
+    msg.textContent='running…'; msg.className='msg';
+    state.pendingCmd[key] = msg;
+    send(cmd);
+  });
+  chip.append(runBtn, msg);
+  return chip;
+}
+
+/* Renders one parameter card. Commands are rendered separately, at the top
+ * of the module pane, by renderCommandChip() below — this is params only. */
+function renderAccessible(mname, A){
+  const key = mname+':'+A.name;
+  const di = A.datainfo;
+  const card = el('div',{class:'acc'});
+  const h = el('div',{class:'acc-head'});
+  h.append(el('span',{class:'acc-name'}, A.name));
+  h.append(el('span',{class:'tag '+(A.readonly?'ro':'rw')}, A.readonly?'read-only':'writable'));
+  if(A.props.group) h.append(el('span',{class:'tag'}, 'group: '+A.props.group));
+  const numeric = ['double','int','scaled','bool'].includes(di.type);
+  if(numeric){
+    const btn = el('button',{class:'small', style:'margin-left:auto'});
+    const setLabel = ()=> btn.textContent = state.plots[key] ? '✕ Unplot' : '📈 Plot';
+    setLabel();
+    btn.addEventListener('click', ()=>{ togglePlot(mname, A.name); setLabel(); });
+    h.append(btn);
+  }
+  card.append(h);
+
+  if(A.props.description) card.append(el('div',{class:'acc-desc'}, A.props.description));
+  card.append(el('div',{class:'acc-type'}, describeType(di)));
+
+  const isStatus = A.name==='status';
+  const isTable = isTableType(di);
+  const vline = el('div',{class:'valline'});
+  let dotSpan = null;
+  if(isStatus){
+    dotSpan = el('span',{class:'dot'});
+    dotSpan.style.background = statusInfo(statusCodeOf(A.value)).c;
+    dotSpan.style.boxShadow = 'none';
+  }
+  const valText = isStatus ? fmtStatusText(A.value) : isTable ? tableSummary(di, A.value) : fmtValue(di, A.value, {});
+  const valSpan = el('span',{class:'curval'}, valText);
+  const unitSpan = el('span',{class:'unit'}, unitOf(di));
+  const tsSpan = el('span',{class:'ts', title:absTime(A.t)}, relTime(A.t));
+  if(dotSpan) vline.append(dotSpan);
+  vline.append(valSpan, unitSpan, tsSpan);
+  vline.append(el('button',{class:'small', onclick:()=> send(`read ${mname}:${A.name}`)}, '↻'));
+  if(A.qual && A.qual.e!==undefined) vline.append(el('span',{class:'ts'}, '± '+A.qual.e));
+  card.append(vline);
+
+  let tableWrap = null;
+  if(isTable){
+    tableWrap = el('div',{class:'valtable-outer'});
+    renderValueTable(tableWrap, di, A.value);
+    card.append(tableWrap);
+  }
+  state.cellRefs[key] = {row:card, val:valSpan, unit:unitSpan, ts:tsSpan, dot:dotSpan, table:tableWrap};
+
+  if(!A.readonly){
+    const w = buildInput(di, A.value);
+    const msg = el('span',{class:'msg'});
+    const setline = el('div',{class:'setline'});
+    setline.append(w.node);
+    setline.append(el('button',{class:'primary small', onclick:()=>{
+      let json;
+      try{ json = w.get(); }catch(e){ msg.textContent='⚠ '+e.message; msg.className='msg err'; return; }
+      msg.textContent='setting…'; msg.className='msg';
+      state.pendingMsg[key] = msg;
+      send(`change ${mname}:${A.name} ${json}`);
+    }},'Set'));
+    setline.append(msg);
+    card.append(setline);
+  }
+  if(A.error) card.append(el('div',{class:'msg err'}, A.error));
+  return card;
+}
+
+function updateValueUI(mod, param, action){
+  const M = state.modules[mod]; if(!M) return;
+  // sidebar
+  const sr = state.sideRefs[mod];
+  if(sr){
+    if(param==='value' && M.accessibles.value) sr.val.textContent = fmtValue(M.accessibles.value.datainfo, M.accessibles.value.value, {short:true});
+    if(param==='status'){ const si = statusInfo(M.statusCode); sr.dot.style.background = si.c; }
+  }
+  // module header pill — update in place; never rebuild the pane here or we
+  // would steal focus from an input the user is editing
+  if(state.selected===mod && param==='status' && state.headPill){
+    const si = statusInfo(M.statusCode);
+    state.headPill.style.background = si.c;
+    state.headPill.textContent = si.t + (M.statusText ? (' — ' + M.statusText) : '');
+  }
+  // value cell
+  if(state.selected===mod){
+    const ref = state.cellRefs[mod+':'+param];
+    const A = M.accessibles[param];
+    if(ref && A){
+      if(param==='status'){
+        ref.val.textContent = fmtStatusText(A.value);
+        if(ref.dot) ref.dot.style.background = statusInfo(statusCodeOf(A.value)).c;
+      } else if(ref.table){
+        ref.val.textContent = tableSummary(A.datainfo, A.value);
+        renderValueTable(ref.table, A.datainfo, A.value);
+      } else {
+        ref.val.textContent = fmtValue(A.datainfo, A.value, {});
+      }
+      ref.ts.textContent = relTime(A.t); ref.ts.title = absTime(A.t);
+      if(action==='changed' || action==='reply'){
+        ref.row.classList.remove('flash'); void ref.row.offsetWidth; ref.row.classList.add('flash');
+        const pm = state.pendingMsg[mod+':'+param];
+        if(pm && action==='changed'){ pm.textContent='✓ set'; pm.className='msg ok'; }
+      }
+    }
+  }
+}
+
+/* refresh relative timestamps periodically */
+setInterval(()=>{
+  if(state.tab!=='module') return;
+  for(const key in state.cellRefs){
+    const [m,p] = key.split(':'); const A = state.modules[m] && state.modules[m].accessibles[p];
+    if(A) state.cellRefs[key].ts.textContent = relTime(A.t);
+  }
+}, 1000);
+
+/* ---------- node info ---------- */
+function renderNode(){
+  const pane = $('#tab-node'); pane.innerHTML='';
+  if(!state.report){ pane.append(el('div',{class:'empty'},'Not connected.')); return; }
+  pane.append(el('h2',null,'Node properties'));
+  const d = el('details',{class:'props', open:'true'}); d.append(el('summary',null,'SECoP structure report — node level'));
+  const tbl = el('table');
+  if(state.idn) tbl.append(el('tr',null, el('td',null,'*IDN?'), el('td',null,state.idn)));
+  for(const k in state.node){
+    const v = state.node[k];
+    tbl.append(el('tr',null, el('td',null,k), el('td',null, typeof v==='string'?v:JSON.stringify(v,null,1))));
+  }
+  d.append(tbl); pane.append(d);
+
+  const d2 = el('details',{class:'props'}); d2.append(el('summary',null,'Full raw describe JSON'));
+  d2.append(el('pre',{class:'mono', style:'padding:12px;overflow:auto;font-size:12px;margin:0'}, JSON.stringify(state.report,null,2)));
+  pane.append(d2);
+}
+
+/* ---------- plots ---------- */
+function togglePlot(mod, param){
+  const key = mod+':'+param;
+  if(state.plots[key]){ delete state.plots[key]; }
+  else {
+    const A = state.modules[mod].accessibles[param];
+    state.plots[key] = {data:[], paused:false, windowSec:120, di:A.datainfo, unit:unitOf(A.datainfo)};
+    const n = toNumber(A.datainfo, A.value);
+    if(n!==null) state.plots[key].data.push({t:A.t||Date.now()/1000, v:n});
+  }
+  updatePlotsTabCount();
+  renderPlots();
+}
+function updatePlotsTabCount(){
+  const n = Object.keys(state.plots).length;
+  document.querySelector('#tabs button[data-tab=plots]').textContent = n ? `Plots (${n})` : 'Plots';
+}
+function renderPlots(){
+  const pane = $('#tab-plots'); pane.innerHTML='';
+  const keys = Object.keys(state.plots);
+  if(!keys.length){ pane.append(el('div',{class:'empty'},'No parameters plotted. Use the 📈 Plot button on a numeric parameter.')); return; }
+  for(const key of keys){
+    const P = state.plots[key];
+    const card = el('div',{class:'plotcard'});
+    const head = el('div',{class:'row'});
+    head.append(el('h3',null, key + (P.unit?` [${P.unit}]`:'')));
+    const winSel = el('select',{class:'small'}, ...[['30','30 s'],['60','1 min'],['120','2 min'],['300','5 min'],['900','15 min'],['3600','1 h'],['all','all']].map(([v,t])=>el('option',{value:v, selected: String(P.windowSec)===v ? 'true' : null}, t)));
+    winSel.value = String(P.windowSec);
+    winSel.addEventListener('change', ()=>{ P.windowSec = winSel.value==='all' ? 'all' : +winSel.value; drawPlot(P); });
+    const pauseBtn = el('button',{class:'small', onclick:()=>{ P.paused=!P.paused; pauseBtn.textContent = P.paused?'▶ Resume':'⏸ Pause'; }}, P.paused?'▶ Resume':'⏸ Pause');
+    head.append(el('span',{style:'margin-left:auto'}), winSel, pauseBtn,
+      el('button',{class:'small', onclick:()=>{ P.data.length=0; drawPlot(P); }},'Clear'),
+      el('button',{class:'small', onclick:()=>exportCSV(key,P)},'CSV'),
+      el('button',{class:'small', onclick:()=>{ delete state.plots[key]; updatePlotsTabCount(); renderPlots(); }},'✕ Remove'));
+    card.append(head);
+    const canvas = el('canvas'); card.append(canvas);
+    const stats = el('div',{class:'plotstats'});
+    card.append(stats);
+    P._canvas = canvas; P._stats = stats;
+    pane.append(card);
+    drawPlot(P);
+  }
+}
+function exportCSV(key, P){
+  const rows = [['time_iso','time_unix','value']].concat(P.data.map(p=>[new Date(p.t*1000).toISOString(), p.t, p.v]));
+  const blob = new Blob([rows.map(r=>r.join(',')).join('\n')], {type:'text/csv'});
+  const a = el('a',{href:URL.createObjectURL(blob), download:key.replace(':','_')+'.csv'});
+  document.body.append(a); a.click(); a.remove();
+}
+function drawPlot(P){
+  const canvas = P._canvas; if(!canvas) return;
+  const ctx = canvas.getContext('2d');
+  const dpr = window.devicePixelRatio || 1;
+  const w = canvas.clientWidth || 600, h = canvas.clientHeight || 230;
+  canvas.width = w*dpr; canvas.height = h*dpr;
+  ctx.setTransform(dpr,0,0,dpr,0,0);
+  const css = getComputedStyle(document.body);
+  const fg = css.color, muted = getComputedStyle(document.documentElement).getPropertyValue('--muted') || '#888';
+  ctx.clearRect(0,0,w,h);
+  const pad = {l:60, r:14, t:12, b:24};
+  const now = Date.now()/1000;
+  let xmin, xmax = now;
+  if(P.windowSec==='all'){ xmin = P.data.length ? P.data[0].t : now-60; if(P.data.length) xmax = Math.max(now, P.data[P.data.length-1].t); }
+  else xmin = now - P.windowSec;
+  const vis = P.data.filter(p => p.t >= xmin - 2);
+  ctx.font = '11px ui-monospace,monospace';
+  if(!vis.length){
+    ctx.fillStyle = muted; ctx.fillText('waiting for data…', pad.l, h/2);
+    P._stats.textContent = `${P.data.length} pt(s) buffered`;
+    return;
+  }
+  let ymin = Math.min(...vis.map(p=>p.v)), ymax = Math.max(...vis.map(p=>p.v));
+  if(ymin===ymax){ ymin-=1; ymax+=1; }
+  const yr = ymax-ymin; ymin-=yr*0.08; ymax+=yr*0.08;
+  const X = t => pad.l + (t-xmin)/(xmax-xmin) * (w-pad.l-pad.r);
+  const Y = v => pad.t + (1-(v-ymin)/(ymax-ymin)) * (h-pad.t-pad.b);
+
+  // grid + axes
+  ctx.strokeStyle = muted; ctx.globalAlpha = .3;
+  ctx.beginPath(); ctx.moveTo(pad.l, pad.t); ctx.lineTo(pad.l, h-pad.b); ctx.lineTo(w-pad.r, h-pad.b); ctx.stroke();
+  ctx.globalAlpha = 1; ctx.fillStyle = muted;
+  for(let i=0;i<=4;i++){
+    const v = ymin + (ymax-ymin)*i/4, y = Y(v);
+    ctx.globalAlpha=.15; ctx.beginPath(); ctx.moveTo(pad.l,y); ctx.lineTo(w-pad.r,y); ctx.stroke(); ctx.globalAlpha=1;
+    ctx.fillText(Number(v.toPrecision(4)).toString(), 4, y+3);
+  }
+  for(let i=0;i<=4;i++){
+    const t = xmin + (xmax-xmin)*i/4, x = X(t);
+    const lbl = new Date(t*1000).toLocaleTimeString();
+    ctx.fillText(lbl, Math.min(x-24, w-pad.r-52), h-6);
+  }
+  // line
+  ctx.strokeStyle = '#2f81f7'; ctx.lineWidth = 1.6; ctx.beginPath();
+  vis.forEach((p,i)=>{ const x=X(p.t), y=Y(p.v); i?ctx.lineTo(x,y):ctx.moveTo(x,y); });
+  ctx.stroke();
+  // last point
+  const last = vis[vis.length-1];
+  ctx.fillStyle = '#2f81f7'; ctx.beginPath(); ctx.arc(X(last.t), Y(last.v), 2.5, 0, 7); ctx.fill();
+
+  const vals = P.data.map(p=>p.v);
+  P._stats.innerHTML = `last <b>${last.v.toPrecision(6)}</b> · min <b>${Math.min(...vals).toPrecision(6)}</b> · max <b>${Math.max(...vals).toPrecision(6)}</b> · <b>${P.data.length}</b> pts${P.paused?' · <b>PAUSED</b>':''}`;
+}
+setInterval(()=>{ if(state.tab==='plots') for(const k in state.plots) drawPlot(state.plots[k]); }, 700);
+window.addEventListener('resize', ()=>{ if(state.tab==='plots') for(const k in state.plots) drawPlot(state.plots[k]); });
+
+/* ---------- console / log ---------- */
+function logLine(dir, text, cls){
+  const entry = {dir, text, cls};
+  state.log.push(entry);
+  if(state.log.length>4000) state.log.shift();
+  appendLog(entry);
+}
+function appendLog(e){
+  if(e.dir==='rx' && !$('#showupd').checked && /^update\s/.test(e.text)) return;
+  const box = $('#log');
+  const near = box.scrollHeight - box.scrollTop - box.clientHeight < 40;
+  const cls = e.cls || (e.dir==='tx'?'tx':e.dir==='rx'?'rx':'in');
+  const prefix = e.dir==='tx' ? '» ' : e.dir==='rx' ? '« ' : '  ';
+  box.append(el('div',{class:cls}, prefix + e.text));
+  if(near) box.scrollTop = box.scrollHeight;
+}
+function rerenderLog(){
+  const box = $('#log'); box.innerHTML='';
+  for(const e of state.log) appendLog(e);
+}
+$('#showupd').addEventListener('change', ()=>{ savePrefs(); rerenderLog(); });
+$('#clearlog').addEventListener('click', ()=>{ state.log.length=0; $('#log').innerHTML=''; });
+$('#consend').addEventListener('click', ()=>{ const v=$('#conline').value.trim(); if(v){ send(v); $('#conline').value=''; } });
+$('#conline').addEventListener('keydown', e=>{ if(e.key==='Enter'){ const v=$('#conline').value.trim(); if(v){ send(v); $('#conline').value=''; } } });
+
+/* ---------- tabs ---------- */
+function switchTab(name){
+  state.tab = name;
+  document.querySelectorAll('#tabs button').forEach(b=> b.classList.toggle('active', b.dataset.tab===name));
+  document.querySelectorAll('.tabpane').forEach(p=> p.classList.toggle('active', p.id==='tab-'+name));
+  if(name==='plots') for(const k in state.plots) drawPlot(state.plots[k]);
+}
+document.querySelectorAll('#tabs button').forEach(b=> b.addEventListener('click', ()=> switchTab(b.dataset.tab)));
+
+/* ---------- go ---------- */
+loadPrefs();
+setStatus('disconnected');
+</script>
+</body>
+</html>
