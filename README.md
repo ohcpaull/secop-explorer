@@ -10,8 +10,9 @@ node. It reads the node's `describe` report and gives you:
 * live **time plots** of any numeric parameter, with CSV export;
 * a raw **console** showing the full protocol traffic, with a manual send box;
 * a **Node info** tab with the node properties and the full raw `describe` JSON;
-* per-module filtering to keep the operational parameters in view — see
-  [Hiding advanced/internal parameters](#hiding-advancedinternal-parameters).
+* **User / Advanced / Expert** views driven by the node's SECoP `visibility`
+  hints, plus per-group filtering — see
+  [View levels (visibility)](#view-levels-visibility).
 
 ## Files
 
@@ -71,28 +72,67 @@ python3 secop_bridge.py --listen 127.0.0.1:1337   # terminal 2
 # open secop_web_client.html, connect with host=localhost port=10800
 ```
 
-The mock exposes a ramping temperature controller (`ts`) and a switch (`bnc`).
+The mock exposes a ramping temperature controller (`ts`) and a switch (`bnc`),
+with a few `visibility` hints set so you can try the view levels below
+(`bnc` is hidden in User view; `ts.ramp`, `ts.tolerance`, `ts.mode` and
+`ts.heater_output` each behave differently per level).
 
-## Hiding advanced/internal parameters
+## View levels (visibility)
 
-Some modules expose a lot of parameters that are rarely touched — internal
-tuning knobs, poll intervals, and the like. The **Module** tab shows a small
-filter bar above the parameter list whenever a module has any of these:
+The **View** selector in the header switches between **User**, **Advanced**
+and **Expert**. It follows the SECoP `visibility` property that a node can set
+on any module, parameter or command.
 
-* **show advanced / internal (n)** — a checkbox, off by default. A parameter
-  counts as "advanced" if the node marks it with SECoP `visibility: advanced`
-  or `expert`, or — failing that — if its name starts with `_` (Frappy
-  exports any parameter outside a module's standard SECoP interface with a
-  leading underscore, e.g. `_tolerance`).
-* **group chips** — one per distinct `group` property found on the module's
-  parameters (e.g. `tuning`, `diagnostics`). Click a chip to hide/show every
-  parameter in that group; a dashed, dimmed chip means the group is hidden.
+`visibility` is a 3-character string — **one character per level, in the order
+Expert, Advanced, User** — where each character is:
 
-Both settings are remembered (per browser, via `localStorage`) and apply
-across modules, so hiding a group like `diagnostics` once hides it everywhere
-it appears. They only affect what's displayed — hidden parameters still get
-their `read`/`update` traffic and keep their values current for whenever you
-reveal them.
+| char | meaning at that level |
+|------|------------------------|
+| `w`  | shown and writable / executable |
+| `r`  | shown read-only (no **Set** editor; command button disabled) |
+| `-`  | hidden |
+
+| visibility | Expert | Advanced | User |
+|------------|--------|----------|------|
+| `www` (default) | writable | writable | writable |
+| `wwr` | writable | writable | read-only |
+| `wrr` | writable | read-only | read-only |
+| `ww-` | writable | writable | hidden |
+| `w--` | writable | hidden | hidden |
+
+Details:
+
+* No `visibility` in `describe` means `www` — Frappy doesn't export the
+  default. Legacy values are mapped the same way Frappy does:
+  `user`/`1` → `www`, `advanced`/`2` → `ww-`, `expert`/`3` → `w--`.
+  (Frappy's auto-created IO modules are `expert`, so they only appear in
+  Expert view.)
+* **Module visibility caps everything inside it**: a module that is `-` at
+  the current level disappears from the sidebar; one that is `r` makes all its
+  parameters and commands read-only at that level.
+* A parameter that is `readonly` in the protocol is never editable,
+  whatever its visibility says.
+* When something is hidden, the page says so ("*2 hidden in User view*" above
+  the parameters, "*1 module hidden in User view*" in the sidebar), and
+  read-only tags/disabled buttons have a tooltip saying which view allows the
+  change.
+* In **Expert** view each accessible that sets a visibility shows a `vis: …`
+  tag — handy for checking a driver's configuration.
+* The level is remembered per browser; bookmark a level with `?level=user`,
+  `?level=advanced` or `?level=expert`.
+* **It's a hint, not access control.** The server doesn't enforce visibility,
+  and the raw **Console** tab can still send any command.
+
+### Group chips
+
+Above the parameter list there's also one chip per distinct `group` property
+on the module's parameters (e.g. `tuning`, `diagnostics`). Click a chip to
+hide/show every parameter in that group; a dashed, dimmed chip means the group
+is hidden. Hidden groups are remembered and apply across modules.
+
+Neither the view level nor the group chips affect communication — hidden
+parameters still receive their `update`s and are current whenever you reveal
+them.
 
 ## Notes / limitations
 

@@ -26,7 +26,7 @@
   h1,h2,h3{margin:0}
   a{color:var(--accent)}
   button{font:inherit;cursor:pointer;border:1px solid var(--border);background:var(--panel2);color:var(--text);border-radius:6px;padding:5px 10px}
-  button:hover{border-color:var(--accent)}
+  button:not(:disabled):hover{border-color:var(--accent)}
   button.primary{background:var(--accent);color:var(--accent-fg);border-color:var(--accent)}
   button.small{padding:2px 7px;font-size:12px}
   input,select,textarea{font:inherit;background:var(--panel);color:var(--text);border:1px solid var(--border);border-radius:6px;padding:5px 7px}
@@ -47,6 +47,16 @@
   .fieldgrp label{display:flex;flex-direction:column;font-size:11px;color:var(--muted);gap:2px}
   .fieldgrp input{min-width:90px}
   #wsurl{min-width:280px}
+  /* view level selector: radios styled as a segmented control */
+  fieldset.levelsel{border:0;padding:0;margin:0 0 0 auto;display:flex;align-items:center;gap:0}
+  .levelsel-label{font-size:11px;color:var(--muted);margin-right:6px}
+  .levelsel label{cursor:pointer}
+  .levelsel input{position:absolute;opacity:0;pointer-events:none}
+  .levelsel label span{display:block;font-size:12px;padding:4px 10px;border:1px solid var(--border);background:var(--panel2);color:var(--muted);margin-left:-1px}
+  .levelsel label:first-of-type span{border-radius:6px 0 0 6px;margin-left:0}
+  .levelsel label:last-of-type span{border-radius:0 6px 6px 0}
+  .levelsel input:checked + span{background:var(--accent);border-color:var(--accent);color:var(--accent-fg)}
+  .levelsel input:focus-visible + span{outline:2px solid var(--accent);outline-offset:1px}
 
   /* layout */
   main{flex:1;display:flex;min-height:0}
@@ -103,6 +113,9 @@
   .tag{font-size:10px;padding:1px 6px;border-radius:5px;border:1px solid var(--border);color:var(--muted)}
   .tag.rw{color:var(--ok);border-color:var(--ok)}
   .tag.ro{color:var(--muted)}
+  .tag.vis{font-family:var(--mono);color:var(--busy);border-color:var(--busy)}
+  button:disabled{opacity:.45;cursor:not-allowed}
+  input:disabled,select:disabled,textarea:disabled{opacity:.55;cursor:not-allowed}
   .acc-desc{color:var(--muted);margin:4px 0 8px}
   .acc-type{font-family:var(--mono);font-size:12px;color:var(--muted);background:var(--panel2);padding:3px 7px;border-radius:5px;display:inline-block;margin-bottom:8px;white-space:pre-wrap}
   .valline{display:flex;gap:8px;align-items:baseline;flex-wrap:wrap;margin-bottom:8px}
@@ -185,6 +198,12 @@
     <button class="primary" id="connectbtn">Connect</button>
     <button id="activatebtn" hidden>Deactivate updates</button>
     <label class="row" style="font-size:12px"><input type="checkbox" id="autoact" checked> auto&#8209;activate</label>
+    <fieldset class="levelsel" title="SECoP visibility level: which modules/parameters are shown, and which can be changed">
+      <span class="levelsel-label">View</span>
+      <label><input type="radio" name="level" value="user" checked><span>User</span></label>
+      <label><input type="radio" name="level" value="advanced"><span>Advanced</span></label>
+      <label><input type="radio" name="level" value="expert"><span>Expert</span></label>
+    </fieldset>
   </div>
   <div class="legend">
     <span><span class="lg" style="background:#3fb950"></span>idle</span>
@@ -249,7 +268,7 @@ const state = {
   plots:{},            // "mod:param" -> {data:[{t,v}], paused, windowSec, di, unit}
   cellRefs:{}, sideRefs:{}, pendingMsg:{}, pendingCmd:{},
   log:[], tab:'module',
-  showAdvanced:false,  // show underscore-prefixed / visibility=advanced|expert parameters
+  level:'user',        // view level: 'user' | 'advanced' | 'expert' (see SECoP visibility below)
   hiddenGroups:new Set(),  // group names (the "group" accessible property) currently hidden
 };
 
@@ -263,7 +282,7 @@ function loadPrefs(){
     if(p.port) $('#port').value = p.port;
     if(p.wsurl) $('#wsurl').value = p.wsurl;
     if(p.showupd===false) $('#showupd').checked = false;
-    if(p.showAdvanced) state.showAdvanced = true;
+    if(LEVELS.includes(p.level)) state.level = p.level;
     if(Array.isArray(p.hiddenGroups)) state.hiddenGroups = new Set(p.hiddenGroups);
   }catch(e){}
   // URL query overrides
@@ -272,14 +291,16 @@ function loadPrefs(){
   if(q.get('port')) $('#port').value = q.get('port');
   if(q.get('bridge')) $('#bridgeurl').value = q.get('bridge');
   if(q.get('ws')){ $('#wsurl').value = q.get('ws'); document.querySelector('input[name=mode][value=direct]').checked = true; }
+  if(LEVELS.includes(q.get('level'))) state.level = q.get('level');
   syncMode();
+  syncLevel();
 }
 function savePrefs(){
   try{
     localStorage.setItem('secop_explorer', JSON.stringify({
       mode:currentMode(), bridgeurl:$('#bridgeurl').value, host:$('#host').value,
       port:$('#port').value, wsurl:$('#wsurl').value, showupd:$('#showupd').checked,
-      showAdvanced:state.showAdvanced, hiddenGroups:Array.from(state.hiddenGroups),
+      level:state.level, hiddenGroups:Array.from(state.hiddenGroups),
     }));
   }catch(e){}
 }
@@ -290,6 +311,19 @@ function syncMode(){
   $('#grp-direct').hidden = m!=='direct';
 }
 document.querySelectorAll('input[name=mode]').forEach(r => r.addEventListener('change', ()=>{syncMode();savePrefs();}));
+
+// view level selector (User / Advanced / Expert) — see SECoP visibility helpers
+function syncLevel(){
+  document.querySelector(`input[name=level][value=${state.level}]`).checked = true;
+}
+document.querySelectorAll('input[name=level]').forEach(r => r.addEventListener('change', ()=>{
+  state.level = r.value;
+  savePrefs();
+  if(!state.report) return;   // not connected yet: nothing to re-render
+  ensureVisibleSelection();
+  renderSidebar();
+  renderModule();
+}));
 
 /* ---------- connection ---------- */
 function setStatus(s){
@@ -405,9 +439,7 @@ function onDescribe(report){
     }
     state.modules[mname] = {name:mname, props, accessibles, statusCode:null, statusText:''};
   }
-  if(!state.selected || !state.modules[state.selected]){
-    state.selected = Object.keys(state.modules)[0] || null;
-  }
+  ensureVisibleSelection();
   renderSidebar();
   renderModule();
   renderNode();
@@ -480,47 +512,77 @@ function sprintf(fmt, x){
 }
 function unitOf(di){ return di && di.unit ? di.unit : ''; }
 
-/* An accessible counts as "advanced" (hidden unless the user opts in) if it
- * declares a SECoP `visibility` other than 'user', or — failing that — if
- * Frappy exported it with a leading underscore, which is what Frappy does
- * automatically for any parameter that isn't part of the module's standard
- * SECoP interface (see frappy/params.py: export defaults to '_'+name). Most
- * underscore-prefixed parameters are internal/tuning knobs, not things an
- * operator changes day to day. */
-function isAdvanced(A){
-  const vis = A.props.visibility;
-  if(vis!==undefined && vis!==null){
-    return typeof vis==='number' ? vis>1 : String(vis)!=='user';
-  }
-  return A.name.startsWith('_');
+/* ---------- SECoP visibility (User / Advanced / Expert views) ----------
+ * `visibility` is a 3-character string, one character per view level, in the
+ * order EXPERT, ADVANCED, USER. Each character is:
+ *   'w' = shown and writable,  'r' = shown read-only,  '-' = hidden.
+ * e.g. 'www' everyone can change it; 'wwr' read-only for User;
+ *      'wrr' only Expert can change it; 'ww-' hidden from User; 'w--' Expert only.
+ * Legacy values are mapped exactly like Frappy does (frappy/datatypes.py,
+ * LEGACY_VISIBILITY). Frappy doesn't export the default 'www', so an absent
+ * visibility means 'www'. It's only a hint — the server doesn't enforce it. */
+const LEVELS = ['user', 'advanced', 'expert'];
+const LEVEL_LABEL = {user:'User', advanced:'Advanced', expert:'Expert'};
+const VIS_INDEX = {expert:0, advanced:1, user:2};   // position of each level in the string
+const LEGACY_VIS = {user:'www', 1:'www', advanced:'ww-', 2:'ww-', expert:'w--', 3:'w--'};
+const ACCESS_RANK = {'-':0, 'r':1, 'w':2};
+
+function normVis(v){
+  if(v===undefined || v===null) return 'www';
+  if(Object.prototype.hasOwnProperty.call(LEGACY_VIS, v)) return LEGACY_VIS[v];
+  const s = String(v);
+  return /^[wr-]{3}$/.test(s) ? s : 'www';   // malformed hint: fail open, show it
 }
+function accessAt(vis, level=state.level){ return normVis(vis)[VIS_INDEX[level]]; }
+function moduleAccess(M){ return accessAt(M.props.visibility); }
+// what the user may do with accessible A of module M at the current level:
+// the more restrictive of module and accessible visibility, and a parameter
+// that's readonly in the protocol can never be more than 'r'
+function effectiveAccess(M, A){
+  const m = moduleAccess(M), a = accessAt(A.props.visibility);
+  let eff = ACCESS_RANK[m] < ACCESS_RANK[a] ? m : a;
+  if(!A.isCommand && A.readonly && eff==='w') eff = 'r';
+  return eff;
+}
+// lowest level at which this accessible can be changed/executed, e.g. 'Expert'
+function writableFrom(M, A){
+  for(const lvl of LEVELS){
+    if(accessAt(M.props.visibility, lvl)==='w' && accessAt(A.props.visibility, lvl)==='w') return LEVEL_LABEL[lvl];
+  }
+  return null;
+}
+function isModuleVisible(mname){ return moduleAccess(state.modules[mname]) !== '-'; }
+// if the selected module is hidden at the current level, select the first visible one
+function ensureVisibleSelection(){
+  if(state.selected && state.modules[state.selected] && isModuleVisible(state.selected)) return;
+  state.selected = Object.keys(state.modules).find(isModuleVisible) || null;
+}
+
 function visibleAccessibles(M, allNames){
   return allNames.filter(an=>{
     const A = M.accessibles[an];
-    if(!state.showAdvanced && isAdvanced(A)) return false;
+    if(effectiveAccess(M, A)==='-') return false;
     const g = A.props.group || '';
     if(g && state.hiddenGroups.has(g)) return false;
     return true;
   });
 }
 function buildFilterBar(M, allNames){
-  let advCount = 0;
+  let levelHidden = 0;
   const groupCounts = {};
   for(const an of allNames){
     const A = M.accessibles[an];
-    if(isAdvanced(A)) advCount++;
+    if(effectiveAccess(M, A)==='-') { levelHidden++; continue; }
     const g = A.props.group || '';
     if(g) groupCounts[g] = (groupCounts[g]||0) + 1;
   }
   const groupNames = Object.keys(groupCounts).sort();
-  if(!advCount && !groupNames.length) return null;
+  if(!levelHidden && !groupNames.length) return null;
 
   const bar = el('div',{class:'filterbar'});
-  if(advCount){
-    const cb = el('input',{type:'checkbox'});
-    cb.checked = state.showAdvanced;
-    cb.addEventListener('change', ()=>{ state.showAdvanced = cb.checked; savePrefs(); renderModule(); });
-    bar.append(el('label',null, cb, `show advanced / internal (${advCount})`));
+  if(levelHidden){
+    bar.append(el('span',{class:'muted', title:'switch to a higher View level in the header to see them'},
+      `${levelHidden} hidden in ${LEVEL_LABEL[state.level]} view`));
   }
   for(const g of groupNames){
     const hidden = state.hiddenGroups.has(g);
@@ -707,12 +769,14 @@ function renderSidebar(){
   if(state.node.description) nb.append(el('div',{class:'muted', style:'font-size:12px;margin-top:2px'}, state.node.description));
 
   const ul = $('#modlist'); ul.innerHTML=''; state.sideRefs={};
-  // group by "group" property
+  // group by "group" property; modules hidden at the current view level are skipped
   const groups = {};
   for(const mname in state.modules){
+    if(!isModuleVisible(mname)) continue;
     const g = state.modules[mname].props.group || '';
     (groups[g] = groups[g] || []).push(mname);
   }
+  const hiddenMods = Object.keys(state.modules).length - Object.values(groups).reduce((n,l)=>n+l.length, 0);
   const order = Object.keys(groups).sort((a,b)=> a===''?1 : b===''?-1 : a.localeCompare(b));
   for(const g of order){
     if(g) ul.append(el('div',{class:'grouphdr'}, g));
@@ -726,6 +790,10 @@ function renderSidebar(){
       state.sideRefs[mname] = {dot, val};
       ul.append(li);
     }
+  }
+  if(hiddenMods){
+    ul.append(el('div',{class:'grouphdr', title:'switch to a higher View level in the header to see them'},
+      `${hiddenMods} module${hiddenMods===1?'':'s'} hidden in ${LEVEL_LABEL[state.level]} view`));
   }
 }
 
@@ -746,12 +814,20 @@ function renderModule(){
   state.headPill = el('span',{class:'pill', style:`background:${si.c}`}, si.t + (M.statusText?(' — '+M.statusText):''));
   head.append(state.headPill);
   for(const ic of (M.props.interface_classes || M.props.interface_class || [])) head.append(el('span',{class:'iface'}, ic));
+  // module-level visibility: 'r' at this level makes everything in it read-only
+  if(moduleAccess(M)==='r'){
+    head.append(el('span',{class:'tag ro', title:'module visibility makes all its parameters and commands read-only at this level'},
+      `read-only in ${LEVEL_LABEL[state.level]} view`));
+  }
+  if(state.level==='expert' && M.props.visibility!==undefined){
+    head.append(el('span',{class:'tag vis', title:'SECoP visibility (expert / advanced / user)'}, 'vis: '+normVis(M.props.visibility)));
+  }
   head.append(el('button',{class:'small', style:'margin-left:auto', onclick:()=>{ for(const an in M.accessibles){ if(!M.accessibles[an].isCommand) send(`read ${mname}:${an}`); } }}, '↻ Read all'));
   pane.append(head);
   if(M.props.description) pane.append(el('div',{class:'muted', style:'margin-bottom:6px'}, M.props.description));
 
-  // filtering (advanced/internal params, and per-group show/hide) — applies to
-  // both commands and parameters, computed once up front
+  // filtering (SECoP visibility at the current view level, and per-group
+  // show/hide) — applies to both commands and parameters, computed once up front
   const allNames = Object.keys(M.accessibles);
   const allParamNames = allNames.filter(a=>!M.accessibles[a].isCommand);
   const anames = visibleAccessibles(M, allNames);
@@ -779,7 +855,7 @@ function renderModule(){
   if(bar) pane.append(bar);
 
   if(allParamNames.length && !params.length){
-    pane.append(el('div',{class:'empty'}, 'Every parameter is hidden by the filters above.'));
+    pane.append(el('div',{class:'empty'}, `No parameters to show in ${LEVEL_LABEL[state.level]} view with the filters above.`));
   }
   for(const an of params) pane.append(renderAccessible(mname, M.accessibles[an]));
 }
@@ -796,7 +872,12 @@ function renderCommandBar(mname, M, cmdNames){
 function renderCommandChip(mname, A){
   const key = mname+':'+A.name;
   const di = A.datainfo;
-  const tip = [A.props.description, describeType(di)].filter(Boolean).join(' — ');
+  const M = state.modules[mname];
+  // visibility 'r' at this level: show the command, but it can't be executed here
+  const canRun = effectiveAccess(M, A)==='w';
+  const from = writableFrom(M, A);
+  const lockTip = canRun ? '' : (from ? `executable in ${from} view` : 'not executable at any view level');
+  const tip = [A.props.description, describeType(di), lockTip].filter(Boolean).join(' — ');
   const chip = el('div',{class:'cmdchip'});
   const initial = A.result!==undefined ? ('✓ '+JSON.stringify(A.result)) : '';
   const msg = el('span',{class:'msg'+(A.result!==undefined?' ok':'')}, initial);
@@ -806,13 +887,15 @@ function renderCommandChip(mname, A){
     chip.append(el('span',{class:'cmdname mono', title:tip}, A.name));
     const w = buildInput(di.argument, undefined);
     w.node.classList.add('cmdarg');
+    w.node.disabled = !canRun;
     chip.append(w.node);
     getArg = w.get;
-    runBtn = el('button',{class:'small primary'}, 'Run');
+    runBtn = el('button',{class:'small primary', title:tip}, 'Run');
   } else {
     // no argument: the button itself is labelled with the command name
     runBtn = el('button',{class:'small primary mono', title:tip}, A.name);
   }
+  runBtn.disabled = !canRun;
   runBtn.addEventListener('click', ()=>{
     let cmd = `do ${mname}:${A.name}`;
     if(getArg){ try{ cmd += ' '+getArg(); }catch(e){ msg.textContent='⚠ '+e.message; msg.className='msg err'; return; } }
@@ -821,6 +904,9 @@ function renderCommandChip(mname, A){
     send(cmd);
   });
   chip.append(runBtn, msg);
+  if(state.level==='expert' && A.props.visibility!==undefined){
+    chip.append(el('span',{class:'tag vis', title:'SECoP visibility (expert / advanced / user)'}, normVis(A.props.visibility)));
+  }
   return chip;
 }
 
@@ -829,11 +915,25 @@ function renderCommandChip(mname, A){
 function renderAccessible(mname, A){
   const key = mname+':'+A.name;
   const di = A.datainfo;
+  const M = state.modules[mname];
+  // 'w' or 'r' at the current view level (hidden ones never get this far)
+  const canWrite = effectiveAccess(M, A)==='w';
   const card = el('div',{class:'acc'});
   const h = el('div',{class:'acc-head'});
   h.append(el('span',{class:'acc-name'}, A.name));
-  h.append(el('span',{class:'tag '+(A.readonly?'ro':'rw')}, A.readonly?'read-only':'writable'));
+  if(canWrite){
+    h.append(el('span',{class:'tag rw'}, 'writable'));
+  } else if(!A.readonly){
+    // writable in the protocol, but not at this view level
+    const from = writableFrom(M, A);
+    h.append(el('span',{class:'tag ro', title: from ? `writable in ${from} view` : 'not writable at any view level'}, 'read-only'));
+  } else {
+    h.append(el('span',{class:'tag ro'}, 'read-only'));
+  }
   if(A.props.group) h.append(el('span',{class:'tag'}, 'group: '+A.props.group));
+  if(state.level==='expert' && A.props.visibility!==undefined){
+    h.append(el('span',{class:'tag vis', title:'SECoP visibility (expert / advanced / user)'}, 'vis: '+normVis(A.props.visibility)));
+  }
   const numeric = ['double','int','scaled','bool'].includes(di.type);
   if(numeric){
     const btn = el('button',{class:'small', style:'margin-left:auto'});
@@ -874,7 +974,7 @@ function renderAccessible(mname, A){
   }
   state.cellRefs[key] = {row:card, val:valSpan, unit:unitSpan, ts:tsSpan, dot:dotSpan, table:tableWrap};
 
-  if(!A.readonly){
+  if(canWrite){
     const w = buildInput(di, A.value);
     const msg = el('span',{class:'msg'});
     const setline = el('div',{class:'setline'});
