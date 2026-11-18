@@ -12,7 +12,9 @@ node. It reads the node's `describe` report and gives you:
 * a **Node info** tab with the node properties and the full raw `describe` JSON;
 * **User / Advanced / Expert** views driven by the node's SECoP `visibility`
   hints, plus per-group filtering — see
-  [View levels (visibility)](#view-levels-visibility).
+  [View levels (visibility)](#view-levels-visibility);
+* controller/output pairs (Frappy `HasOutputModule` / `HasControlledBy`) grouped
+  together in the sidebar — see [Linked modules](#linked-modules-controlled_by).
 
 ## Files
 
@@ -72,10 +74,35 @@ python3 secop_bridge.py --listen 127.0.0.1:1337   # terminal 2
 # open secop_web_client.html, connect with host=localhost port=10800
 ```
 
-The mock exposes a ramping temperature controller (`ts`) and a switch (`bnc`),
-with a few `visibility` hints set so you can try the view levels below
-(`bnc` is hidden in User view; `ts.ramp`, `ts.tolerance`, `ts.mode` and
-`ts.heater_output` each behave differently per level).
+The mock exposes a ramping temperature controller (`ts`), a heater output
+(`htr`) that `ts` drives while regulating, and a switch (`bnc`), with a few
+`visibility` hints set so you can try the view levels below (`bnc` is hidden in
+User view; `ts.ramp`, `ts.tolerance`, `ts.mode` and `ts.heater_output` each
+behave differently per level). Setting `ts:target` hands `htr` to `ts`;
+setting `htr:target` takes it back to manual.
+
+## Linked modules (controlled_by)
+
+When one module drives another — a temperature loop and its heater output,
+written in Frappy with `HasOutputModule` (`output_module = Attached(...)`) on the
+controller and `HasControlledBy` on the output — the sidebar shows them together
+inside a faint bracket, with the driven module indented under its controller
+(`↳`). Chains nest further (loop → secondary loop → heater), and an output that
+several loops can drive sits under all of them. A linked module from another
+`group` is moved next to its controller.
+
+How it's discovered: Frappy doesn't put `output_module` in `describe`, but the
+driven module has the standard SECoP parameter **`controlled_by`**, an enum of
+`self` plus every module allowed to control it. Those names are the links, and
+the parameter's live value says who is in control right now:
+
+* the `↳` arrow turns accent-coloured when a controller is in charge, grey when
+  the output is self-controlled (hover it for details);
+* the module header shows `controls htr` / `controlled by ts` chips — solid when
+  that link is active, dashed when not — and clicking one jumps to that module.
+
+Modules hidden at the current view level are left out, so a link whose partner
+isn't visible just shows as a normal, unbracketed row.
 
 ## View levels (visibility)
 
