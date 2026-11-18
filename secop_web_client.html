@@ -278,6 +278,8 @@ function loadPrefs(){
     const p = JSON.parse(localStorage.getItem('secop_explorer')||'{}');
     if(p.mode){ document.querySelector(`input[name=mode][value=${p.mode}]`).checked = true; }
     if(p.bridgeurl) $('#bridgeurl').value = p.bridgeurl;
+    else if(location.protocol.startsWith('http'))
+      $('#bridgeurl').value = (location.protocol==='https:' ? 'wss://' : 'ws://') + location.host + '/secop-bridge';
     if(p.host) $('#host').value = p.host;
     if(p.port) $('#port').value = p.port;
     if(p.wsurl) $('#wsurl').value = p.wsurl;
