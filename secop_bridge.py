@@ -29,6 +29,7 @@ import hashlib
 import struct
 import sys
 import urllib.parse
+from datetime import datetime
 
 WS_GUID = "258EAFA5-E914-47DA-95CA-C5AB0DC85B11"
 
@@ -165,7 +166,7 @@ async def handle_client(reader, writer):
             port = int(q.get("port", ["10767"])[0])
         except ValueError:
             port = 10767
-        print(f"[bridge] {peer} -> connecting to SECoP node {host}:{port}", flush=True)
+        print(f"{datetime.now()}: [bridge] {peer} -> connecting to SECoP node {host}:{port}", flush=True)
 
         try:
             tcp_reader, tcp_writer = await asyncio.wait_for(
