@@ -148,7 +148,7 @@
   /* plots */
   .plotcard{border:1px solid var(--border);border-radius:9px;background:var(--panel);margin:0 0 14px;padding:12px}
   .plotcard h3{font-size:14px;font-family:var(--mono)}
-  .plotcard canvas{width:100%;height:230px;display:block;margin-top:8px;background:var(--panel2);border-radius:6px}
+  .plotcard canvas{width:100%;height:230px;display:block;margin-top:8px;background:var(--panel2);border-radius:6px;cursor:crosshair}
   .plotstats{font-size:12px;color:var(--muted);margin-top:6px}
   .plotstats b{color:var(--text);font-family:var(--mono)}
 
@@ -1096,6 +1096,12 @@ function renderPlots(){
       el('button',{class:'small', onclick:()=>{ delete state.plots[key]; updatePlotsTabCount(); renderPlots(); }},'✕ Remove'));
     card.append(head);
     const canvas = el('canvas'); card.append(canvas);
+    // hover readout: just remember where the mouse is (CSS px from the canvas'
+    // left edge) and redraw — drawPlot() paints the marker itself, so it
+    // survives the periodic 700 ms redraw while the mouse sits still
+    P._hoverX = null;   // a freshly built canvas starts with no hover marker
+    canvas.addEventListener('mousemove', ev=>{ P._hoverX = ev.offsetX; drawPlot(P); });
+    canvas.addEventListener('mouseleave', ()=>{ P._hoverX = null; drawPlot(P); });
     const stats = el('div',{class:'plotstats'});
     card.append(stats);
     P._canvas = canvas; P._stats = stats;
@@ -1159,8 +1165,55 @@ function drawPlot(P){
   const last = vis[vis.length-1];
   ctx.fillStyle = '#2f81f7'; ctx.beginPath(); ctx.arc(X(last.t), Y(last.v), 2.5, 0, 7); ctx.fill();
 
+  // hover readout: snap to the recorded sample nearest the mouse (in time) —
+  // a real measured value, not something interpolated between samples
+  if(P._hoverX!=null && P._hoverX>=pad.l && P._hoverX<=w-pad.r){
+    let best = vis[0];
+    for(const p of vis){ if(Math.abs(X(p.t)-P._hoverX) < Math.abs(X(best.t)-P._hoverX)) best = p; }
+    drawHoverMarker(ctx, P, best, X(best.t), Y(best.v), {w, h, pad, fg, muted});
+  }
+
   const vals = P.data.map(p=>p.v);
   P._stats.innerHTML = `last <b>${last.v.toPrecision(6)}</b> · min <b>${Math.min(...vals).toPrecision(6)}</b> · max <b>${Math.max(...vals).toPrecision(6)}</b> · <b>${P.data.length}</b> pts${P.paused?' · <b>PAUSED</b>':''}`;
+}
+// value of a plotted sample as text, honouring the parameter's fmtstr
+// (plot data is already scaled for 'scaled' types, see toNumber)
+function fmtPlotValue(P, v){
+  const di = P.di || {};
+  if(di.type==='bool') return v ? 'true' : 'false';
+  if(di.fmtstr) return sprintf(di.fmtstr, v);
+  return String(Number(v.toPrecision(6)));
+}
+// dashed guide line + highlighted point + a small "value unit / time" box
+function drawHoverMarker(ctx, P, pt, x, y, g){
+  const cssVar = n => getComputedStyle(document.documentElement).getPropertyValue(n).trim();
+  // vertical guide
+  ctx.save();
+  ctx.strokeStyle = g.muted; ctx.globalAlpha = .6; ctx.setLineDash([3,3]); ctx.lineWidth = 1;
+  ctx.beginPath(); ctx.moveTo(x, g.pad.t); ctx.lineTo(x, g.h-g.pad.b); ctx.stroke();
+  ctx.restore();
+  // highlighted point
+  ctx.fillStyle = '#2f81f7'; ctx.strokeStyle = cssVar('--panel') || '#fff'; ctx.lineWidth = 2;
+  ctx.beginPath(); ctx.arc(x, y, 4.5, 0, 7); ctx.fill(); ctx.stroke();
+  // label box: value on top, time underneath
+  const line1 = fmtPlotValue(P, pt.v) + (P.unit ? ' '+P.unit : '');
+  const line2 = new Date(pt.t*1000).toLocaleTimeString();
+  ctx.font = 'bold 12px ui-monospace,monospace';
+  const w1 = ctx.measureText(line1).width;
+  ctx.font = '11px ui-monospace,monospace';
+  const w2 = ctx.measureText(line2).width;
+  const bw = Math.max(w1, w2) + 14, bh = 36;
+  // to the right of the point, flipped left if it would run off the plot
+  let bx = x + 10;
+  if(bx + bw > g.w - g.pad.r) bx = x - 10 - bw;
+  let by = Math.min(Math.max(y - bh - 8, g.pad.t), g.h - g.pad.b - bh);
+  ctx.fillStyle = cssVar('--panel') || '#fff';
+  ctx.strokeStyle = cssVar('--border') || '#ccc'; ctx.lineWidth = 1;
+  ctx.beginPath(); ctx.rect(bx, by, bw, bh); ctx.fill(); ctx.stroke();
+  ctx.fillStyle = g.fg;
+  ctx.font = 'bold 12px ui-monospace,monospace'; ctx.fillText(line1, bx+7, by+15);
+  ctx.fillStyle = g.muted;
+  ctx.font = '11px ui-monospace,monospace'; ctx.fillText(line2, bx+7, by+29);
 }
 setInterval(()=>{ if(state.tab==='plots') for(const k in state.plots) drawPlot(state.plots[k]); }, 700);
 window.addEventListener('resize', ()=>{ if(state.tab==='plots') for(const k in state.plots) drawPlot(state.plots[k]); });
